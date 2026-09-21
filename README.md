@@ -3,7 +3,6 @@
 **Machine Author(s):** infosecjack  
 **Difficulty:** Easy  
 **Classification:** Walkthrough / Notes  
-**Prepared By:** cpeAdrian  
 
 ## Synopsis
 Cap is an easy difficulty Linux machine running a web server that performs administrative network captures. Due to missing access controls, an Insecure Direct Object Reference (IDOR) vulnerability allows access to other users' historical packet captures. Analyzing the capture leaks plaintext credentials for a local user, which are used to gain SSH access. Privilege escalation is achieved by locating and abusing a misconfigured Linux binary capability.
