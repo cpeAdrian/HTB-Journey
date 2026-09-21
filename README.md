@@ -1,12 +1,18 @@
 # Hack The Box - Cap Walkthrough
 
-A personal writeup and command cheat sheet documenting the full exploitation process for the Hack The Box machine: Cap.
+**Machine Author(s):** infosecjack  
+**Difficulty:** Easy  
+**Classification:** Walkthrough / Notes  
+**Prepared By:** cpeAdrian  
+
+## Synopsis
+Cap is an easy difficulty Linux machine running a web server that performs administrative network captures. Due to missing access controls, an Insecure Direct Object Reference (IDOR) vulnerability allows access to other users' historical packet captures. Analyzing the capture leaks plaintext credentials for a local user, which are used to gain SSH access. Privilege escalation is achieved by locating and abusing a misconfigured Linux binary capability.
 
 ---
 
 ## Phase 1: Reconnaissance & Scanning
 
-**Concept:** Scanning the target system to identify open ports, active services, and operating system details.
+**Concept:** Scanning the target host to discover open ports and active services.
 
 **Command:**
 
@@ -14,29 +20,34 @@ A personal writeup and command cheat sheet documenting the full exploitation pro
 nmap -sV -sC -O 10.129.137.50
 ```
 
-**How it works in practice:** Before attacking a machine, you must map out its attack surface. Using `nmap` with service detection (`-sV`), default scripts (`-sC`), and OS fingerprinting (`-O`) reveals exactly what services (like HTTP, FTP, and SSH) are listening for incoming traffic on the remote host.
+**How it works in practice:** Before interacting with the system, we map its entry points. Running `nmap` with service version detection (`-sV`), default scripts (`-sC`), and operating system detection (`-O`) reveals exactly what software components are listening for connections.
+
+**Discovered Services:**
+* **Port 21 (FTP):** File Transfer Protocol service.
+* **Port 22 (SSH):** Secure Shell remote terminal service.
+* **Port 80 (HTTP):** Web application dashboard executing background network utilities.
 
 ---
 
 ## Phase 2: Web Exploitation & IDOR
 
-**Concept:** Bypassing web application access controls via Insecure Direct Object Reference (IDOR).
+**Concept:** Navigating web functionalities to look for object manipulation vulnerabilities.
 
 **Walkthrough Details:**
-* **The Redirect Path:** After navigating to the sidebar and running a "Security Snapshot", the web browser redirects the user to a path formatted as `/[something]/[id]`. The value of **`[something]`** is **`data`** (e.g., `/data/1`).
-* **The Vulnerability:** The application fails to validate if the user has authorization to view specific scan files. 
-* **The Target ID:** By manually tampering with the URL parameter and changing the ID to **`0`** (`/data/0`), we can access the very first packet capture file generated on the system, which contains sensitive historical data.
+* **The Redirect Path:** Triggering a **Security Snapshot** via the sidebar menu runs a network capture and redirects the web browser path format to `/[something]/[id]`. The value of **`[something]`** is **`data`** (resulting in a path like `/data/1`).
+* **The Vulnerability:** The web page references saved files using a simple, predictable numbering system without verifying if the requesting user owns that data.
+* **The Target ID:** By manually editing the URL address parameter back to **`0`** (`http://10.129.137`), we successfully access and download the very first packet capture file generated on the system.
 
 ---
 
 ## Phase 3: Packet Analysis (Wireshark)
 
-**Concept:** Inspecting raw network captures to recover plaintext credentials sent over unencrypted protocols.
+**Concept:** Extracting unencrypted data from network captures.
 
 **Analysis Steps:**
-1. Download the `.pcap` file from `/data/0` and open it inside **Wireshark**.
-2. Apply a display filter for the **`ftp`** (File Transfer Protocol) application layer protocol to isolate traffic.
-3. Right-click an FTP packet and select **Follow -> TCP Stream** to view the raw communication text.
+1. Open the downloaded `.pcap` capture file inside **Wireshark**.
+2. Filter the packet stream for the **`ftp`** application layer protocol.
+3. Right-click an FTP packet entry, navigate to **Follow**, and select **TCP Stream** to read the communications transcript in plaintext.
 
 **Recovered Credentials:**
 ```text
@@ -48,34 +59,37 @@ PASS Buck3tH4TF0RM3!
 
 ## Phase 4: Initial Access (User Flag)
 
-**Concept:** Using the recovered credentials to establish a secure remote management terminal session.
+**Concept:** Exploiting credential reuse to gain a remote terminal access shell.
 
 **Command:**
 
 ```bash
+# Log into the target system using the recovered credentials
 ssh nathan@10.129.137.50
+
+# View the user flag string
 cat user.txt
 ```
 
-**How it works in practice:** Since users frequently reuse passwords across multiple services, the credentials harvested from the unencrypted FTP traffic are tried against the **SSH** service. Login is successful, allowing us to drop into a system shell and capture the user flag.
+**How it works in practice:** Because credentials are often reused across services, the plaintext login recovered from the unencrypted FTP traffic is supplied directly to the target's **SSH** service. The connection succeeds, granting a stable Linux shell as the user `nathan` to capture the user flag.
 
 ---
 
 ## Phase 5: Privilege Escalation (Root Flag)
 
-**Concept:** Abusing Linux binary capabilities (`cap_setuid`) to elevate privileges to the system administrator.
+**Concept:** Manually auditing system privileges to locate and abuse dangerous Linux capabilities.
 
 **Command:**
 
 ```bash
-# Locate binaries with elevated capabilities
+# Audit the file system to locate binaries with extra capabilities
 getcap -r / 2>/dev/null
 
-# Abuse the Python capability to spoof the root User ID and spawn a shell
+# Leverage Python's cap_setuid privilege to spawn an administrative root shell
 /usr/bin/python3.8 -c 'import os; os.setuid(0); os.system("/bin/bash")'
 
-# Capture the final root flag
+# Display the final root flag string
 cat /root/root.txt
 ```
 
-**How it works in practice:** Running `getcap` reveals that the host's native Python interpreter is dangerously misconfigured with the `cap_setuid` flag. By executing a one-line Python script, we can explicitly force the system process to set its User ID to `0` (Root) and spawn a fresh `bash` shell, granting full administrative ownership over the server.
+**How it works in practice:** Running the native `getcap` command scans the system for binaries with advanced process permissions. The output reveals that the target's Python binary (`/usr/bin/python3.8`) has a dangerous **`cap_setuid`** capability assigned to it. By running a quick one-liner script, Python alters the running process User ID to `0` (the universal ID for root) and launches `bash`, granting immediate and full root control over the machine.
