@@ -1,193 +1,80 @@
 # Hack The Box - Flag Command Walkthrough
 
-**Difficulty:** Very Easy  
-**Category:** Web  
-**Classification:** Source Code Review / API Enumeration
-
----
-
 ## Synopsis
 
-Flag Command is a very easy web challenge that demonstrates how exposed client-side JavaScript and publicly accessible API endpoints can reveal hidden application functionality. By inspecting the application's source code and enumerating backend endpoints, a secret command can be discovered and used to retrieve the challenge flag.
+Flag Command is a beginner-friendly web challenge that demonstrates how client-side source code can expose hidden application functionality. By reviewing the JavaScript files loaded by the web application and enumerating available API endpoints, a hidden command can be discovered and submitted directly to obtain the flag.
 
 ---
 
-## Phase 1: Service Enumeration
+## Phase 1: Reconnaissance & Enumeration
 
-**Concept:** Identifying the service running on the target host.
+**Concept:** Identifying the application technology and exposed resources.
 
-### Command
+**Command:**
 
 ```bash
 curl -v http://154.57.164.68:30101
 ```
 
-### Result
+**How it works in practice:** Accessing the target reveals a Flask-based web application running on a Werkzeug server. The returned HTML references several JavaScript files responsible for the game's functionality, making them ideal targets for source code review.
 
-```http
-HTTP/1.1 200 OK
-Server: Werkzeug/3.0.1 Python/3.11.8
-```
+**Discovered Resources:**
 
-### How it works in practice
-
-The target exposes a web application running on a Python Flask/Werkzeug server. The returned HTML references multiple JavaScript files that contain the application's client-side logic.
-
----
-
-## Phase 2: Source Code Inspection
-
-**Concept:** Reviewing publicly accessible JavaScript files.
-
-### Command
-
-```bash
-curl http://154.57.164.68:30101/static/terminal/js/commands.js
-```
-
-### Interesting Discovery
-
-```javascript
-"Glancing around, you spot a gangly, grinning figure lurking in the shadows, muttering 'Xclow3n'"
-```
-
-### How it works in practice
-
-JavaScript code is downloaded and executed by the browser, meaning it can always be inspected by users. Reviewing source files can reveal hidden functionality, clues, hardcoded values, or references to undocumented features.
+- **commands.js** – Contains game messages and available commands.
+- **main.js** – Handles command validation and game logic.
+- **game.js** – Handles win and loss conditions.
+- **/api/options** – Returns available game commands.
+- **/api/monitor** – Accepts user commands.
 
 ---
 
-## Phase 3: Analyzing Application Logic
+## Phase 2: Source Code Review
 
-**Concept:** Understanding how commands are validated.
+**Concept:** Inspecting client-side JavaScript for hidden functionality.
 
-### Relevant Code
-
-```javascript
-if (
-    availableOptions[currentStep].includes(currentCommand) ||
-    availableOptions['secret'].includes(currentCommand)
-)
-```
-
-### How it works in practice
-
-The application checks whether a submitted command belongs to either:
-
-- The current game step.
-- A hidden `secret` command list.
-
-This indicates that additional functionality exists outside the normal gameplay flow.
-
----
-
-## Phase 4: API Enumeration
-
-**Concept:** Discovering backend functionality through exposed API endpoints.
-
-### Command
-
-```bash
-curl http://154.57.164.68:30101/api/options
-```
-
-### Response
-
-```json
-{
-  "allPossibleCommands": {
-    "1": [
-      "HEAD NORTH",
-      "HEAD WEST",
-      "HEAD EAST",
-      "HEAD SOUTH"
-    ],
-    "2": [
-      "GO DEEPER INTO THE FOREST",
-      "FOLLOW A MYSTERIOUS PATH",
-      "CLIMB A TREE",
-      "TURN BACK"
-    ],
-    "3": [
-      "EXPLORE A CAVE",
-      "CROSS A RICKETY BRIDGE",
-      "FOLLOW A GLOWING BUTTERFLY",
-      "SET UP CAMP"
-    ],
-    "4": [
-      "ENTER A MAGICAL PORTAL",
-      "SWIM ACROSS A MYSTERIOUS LAKE",
-      "FOLLOW A SINGING SQUIRREL",
-      "BUILD A RAFT AND SAIL DOWNSTREAM"
-    ],
-    "secret": [
-      "Blip-blop, in a pickle with a hiccup! Shmiggity-shmack"
-    ]
-  }
-}
-```
-
-### How it works in practice
-
-The API exposes every valid command available in the game, including hidden commands that are not displayed through the user interface.
-
----
-
-## Phase 5: Secret Command Discovery
-
-**Concept:** Extracting undocumented application functionality.
-
-### Secret Command
-
-```text
-Blip-blop, in a pickle with a hiccup! Shmiggity-shmack
-```
-
-### How it works in practice
-
-The hidden command is stored inside the API response and accepted regardless of the current game state. Enumerating API endpoints reveals functionality that was intended to remain hidden from normal users.
-
----
-
-## Phase 6: Interacting with the Backend
-
-**Concept:** Communicating directly with application APIs.
-
-### Command
-
-```bash
-curl -X POST http://154.57.164.68:30101/api/monitor \
-  -H "Content-Type: application/json" \
-  -d '{"command":"Blip-blop, in a pickle with a hiccup! Shmiggity-shmack"}'
-```
-
-### How it works in practice
-
-The frontend sends commands to the `/api/monitor` endpoint using JSON. By replicating the request manually, we can interact directly with the backend without using the browser interface.
-
-The secret command triggers hidden functionality and returns the challenge flag.
-
----
-
-## Practical Output Example
-
-### Enumerate Available Commands
-
-```bash
-curl http://154.57.164.68:30101/api/options
-```
-
-### Review Client-Side Logic
+**Commands:**
 
 ```bash
 curl http://154.57.164.68:30101/static/terminal/js/commands.js
 
 curl http://154.57.164.68:30101/static/terminal/js/main.js
-
-curl http://154.57.164.68:30101/static/terminal/js/game.js
 ```
 
-### Submit Hidden Command
+**Walkthrough Details:**
+
+- Reviewing the JavaScript files revealed that commands are validated against a predefined list of available options.
+- Inside the game logic, commands are checked against both the current game state and a hidden command category named **secret**.
+- This indicates the existence of functionality not exposed through the normal game interface.
+
+---
+
+## Phase 3: API Enumeration
+
+**Concept:** Interacting directly with backend endpoints.
+
+**Command:**
+
+```bash
+curl http://154.57.164.68:30101/api/options
+```
+
+**How it works in practice:** Querying the API returns every valid command available to the application, including commands not visible to normal users.
+
+**Interesting Discovery:**
+
+```text
+Blip-blop, in a pickle with a hiccup! Shmiggity-shmack
+```
+
+This command appears inside the hidden **secret** command list.
+
+---
+
+## Phase 4: Command Injection Through the API
+
+**Concept:** Submitting the hidden command directly to the backend.
+
+**Command:**
 
 ```bash
 curl -X POST http://154.57.164.68:30101/api/monitor \
@@ -195,25 +82,35 @@ curl -X POST http://154.57.164.68:30101/api/monitor \
   -d '{"command":"Blip-blop, in a pickle with a hiccup! Shmiggity-shmack"}'
 ```
 
+**How it works in practice:** The frontend communicates with the backend using JSON requests. Instead of using the game's interface, we can manually replicate the request and submit the hidden command directly to the `/api/monitor` endpoint.
+
+The server processes the command and returns the challenge flag.
+
+---
+
+## Phase 5: Flag Capture
+
+**Concept:** Leveraging exposed application logic to retrieve sensitive information.
+
+**Result:**
+
+```text
+HTB{REDACTED}
+```
+
+**How it works in practice:** The challenge relies on the assumption that hidden functionality remains undiscovered. Because the command validation logic and API responses are exposed to every user, the secret command can be extracted and submitted without completing the intended game flow.
+
 ---
 
 ## Key Lessons Learned
 
-### Client-Side Code Is Public
+**Client-side JavaScript is public:** Any code delivered to a browser can be reviewed and analyzed.
 
-Anything sent to a browser can be inspected and analyzed by users.
+**Hidden functionality is not access control:** Sensitive commands should never rely on obscurity alone.
 
-### API Enumeration
+**API enumeration is valuable:** Backend endpoints often expose information not visible through the user interface.
 
-API endpoints often expose more functionality than the visible user interface.
-
-### Hidden Functionality Is Not Security
-
-Storing secret commands on the client side or exposing them through APIs does not prevent users from discovering them.
-
-### Source Code Review
-
-Careful inspection of JavaScript files can reveal hidden routes, commands, API endpoints, and application logic.
+**Source code review is a powerful enumeration technique:** Even simple applications may reveal secrets through publicly accessible files.
 
 ---
 
@@ -223,25 +120,13 @@ Careful inspection of JavaScript files can reveal hidden routes, commands, API e
 curl
 Browser Developer Tools
 JavaScript Source Review
-API Enumeration
 ```
-
----
 
 ## Skills Practiced
 
 ```text
 Web Enumeration
-Source Code Review
-JavaScript Analysis
 API Discovery
-Client-Side Security Assessment
-```
-
----
-
-## Flag
-
-```text
-HTB{REPLACE_WITH_YOUR_FLAG}
+Source Code Analysis
+Client-Side Security Review
 ```
